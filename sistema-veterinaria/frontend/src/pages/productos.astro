@@ -1,0 +1,192 @@
+﻿---
+import DashboardLayout from '../layouts/DashboardLayout.astro';
+---
+<DashboardLayout title="Productos">
+  <div class="page-card">
+    <div class="page-card-header">
+      <span class="page-card-title">Inventario de productos</span>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div class="search-wrap">
+          <svg class="search-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input type="text" id="search-input" class="search-input" placeholder="Buscar productos..." />
+        </div>
+        <select id="categoria-filter" class="filter-select">
+          <option value="">Todas las categorías</option>
+          <option value="Alimento">Alimento</option>
+          <option value="Medicamento">Medicamento</option>
+          <option value="Accesorio">Accesorio</option>
+          <option value="Higiene">Higiene</option>
+          <option value="Vacuna">Vacuna</option>
+          <option value="Otro">Otro</option>
+        </select>
+        <button id="add-producto-btn" class="btn-primary">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          Nuevo Producto
+        </button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Producto</th><th>Categoría</th><th>Precio</th><th>Stock</th>
+            <th style="text-align:right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="productos-tbody">
+          <tr><td colspan="5" class="alert-empty">Cargando productos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="producto-modal" class="modal-overlay">
+    <div class="modal-box modal-box-lg">
+      <div class="modal-header">
+        <h3 id="modal-title">Nuevo Producto</h3>
+        <p>Completa los datos del producto</p>
+      </div>
+      <div class="modal-body">
+        <form id="producto-form">
+          <input type="hidden" id="producto-id" />
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Código *</label>
+              <input type="text" id="codigo" required class="form-input" placeholder="Ej: PROD-001" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nombre *</label>
+              <input type="text" id="nombre" required class="form-input" placeholder="Nombre del producto" />
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Descripción</label>
+              <textarea id="descripcion" class="form-textarea" placeholder="Descripción del producto..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Categoría</label>
+              <select id="categoria" class="form-select">
+                <option value="">Sin categoría</option>
+                <option value="Alimento">Alimento</option>
+                <option value="Medicamento">Medicamento</option>
+                <option value="Accesorio">Accesorio</option>
+                <option value="Higiene">Higiene</option>
+                <option value="Vacuna">Vacuna</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Precio *</label>
+              <input type="number" id="precio" required min="0" step="0.01" class="form-input" placeholder="0.00" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Stock actual</label>
+              <input type="number" id="stock" min="0" class="form-input" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Stock mínimo</label>
+              <input type="number" id="stock_minimo" min="0" class="form-input" placeholder="5" />
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button>
+        <button type="submit" form="producto-form" class="btn-primary">Guardar Producto</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:8000';
+    const token = localStorage.getItem('token');
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+    let productos = [], allProductos = [];
+    function getCategoriaColor(cat) {
+      const map = { 'Alimento':'badge-green','Medicamento':'badge-red','Accesorio':'badge-blue','Higiene':'badge-purple','Vacuna':'badge-amber','Otro':'badge-gray' };
+      return map[cat] || 'badge-gray';
+    }
+    async function loadProductos(search = '', categoria = '') {
+      try {
+        const res = await fetch(`${API_URL}/api/productos`, { headers });
+        allProductos = await res.json();
+        productos = allProductos.filter(p =>
+          (!search || p.nombre.toLowerCase().includes(search.toLowerCase()) || p.codigo.toLowerCase().includes(search.toLowerCase())) &&
+          (!categoria || p.categoria === categoria)
+        );
+        renderProductos();
+      } catch (e) { console.error(e); }
+    }
+    function renderProductos() {
+      const tbody = document.getElementById('productos-tbody');
+      if (!productos.length) { tbody.innerHTML = '<tr><td colspan="5" class="alert-empty">No se encontraron productos</td></tr>'; return; }
+      tbody.innerHTML = productos.map(p => `
+        <tr>
+          <td>
+            <p class="cell-name">${p.nombre}</p>
+            <p class="cell-sub">${p.codigo}${p.descripcion ? '  ' + p.descripcion.substring(0,40) : ''}</p>
+          </td>
+          <td>${p.categoria ? `<span class="badge ${getCategoriaColor(p.categoria)}">${p.categoria}</span>` : ''}</td>
+          <td><strong>$${p.precio.toFixed(2)}</strong></td>
+          <td><span class="badge ${p.requiere_reposicion ? 'badge-red' : 'badge-green'}">${p.stock} uds</span></td>
+          <td style="text-align:right">
+            <button class="btn-edit" onclick="editProducto(${p.id})">Editar</button>
+            <button class="btn-danger" onclick="deleteProducto(${p.id})" style="margin-left:6px">Eliminar</button>
+          </td>
+        </tr>`).join('');
+    }
+    const modal = document.getElementById('producto-modal');
+    const form = document.getElementById('producto-form');
+    document.getElementById('add-producto-btn').addEventListener('click', () => {
+      form.reset(); document.getElementById('producto-id').value = '';
+      document.getElementById('modal-title').textContent = 'Nuevo Producto';
+      modal.classList.add('open');
+    });
+    document.getElementById('cancel-btn').addEventListener('click', () => modal.classList.remove('open'));
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+    let st;
+    const getSearch = () => document.getElementById('search-input').value;
+    const getCat = () => document.getElementById('categoria-filter').value;
+    document.getElementById('search-input').addEventListener('input', () => { clearTimeout(st); st = setTimeout(() => loadProductos(getSearch(), getCat()), 300); });
+    document.getElementById('categoria-filter').addEventListener('change', () => loadProductos(getSearch(), getCat()));
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = {
+        codigo: document.getElementById('codigo').value,
+        nombre: document.getElementById('nombre').value,
+        descripcion: document.getElementById('descripcion').value || null,
+        categoria: document.getElementById('categoria').value || null,
+        precio: parseFloat(document.getElementById('precio').value),
+        stock: parseInt(document.getElementById('stock').value) || 0,
+        stock_minimo: parseInt(document.getElementById('stock_minimo').value) || 5,
+      };
+      const id = document.getElementById('producto-id').value;
+      try {
+        await fetch(id ? `${API_URL}/api/productos/${id}` : `${API_URL}/api/productos`, {
+          method: id ? 'PUT' : 'POST', headers, body: JSON.stringify(data)
+        });
+        modal.classList.remove('open'); loadProductos(getSearch(), getCat());
+      } catch { alert('Error al guardar producto'); }
+    });
+    window.editProducto = id => {
+      const p = productos.find(x => x.id === id); if (!p) return;
+      document.getElementById('producto-id').value = id;
+      document.getElementById('codigo').value = p.codigo;
+      document.getElementById('nombre').value = p.nombre;
+      document.getElementById('descripcion').value = p.descripcion || '';
+      document.getElementById('categoria').value = p.categoria || '';
+      document.getElementById('precio').value = p.precio;
+      document.getElementById('stock').value = p.stock;
+      document.getElementById('stock_minimo').value = p.stock_minimo;
+      document.getElementById('modal-title').textContent = 'Editar Producto';
+      modal.classList.add('open');
+    };
+    window.deleteProducto = async id => {
+      if (!confirm('¿Eliminar este producto?')) return;
+      try { await fetch(`${API_URL}/api/productos/${id}`, { method: 'DELETE', headers }); loadProductos(getSearch(), getCat()); }
+      catch { alert('Error al eliminar producto'); }
+    };
+    loadProductos();
+  </script>
+</DashboardLayout>

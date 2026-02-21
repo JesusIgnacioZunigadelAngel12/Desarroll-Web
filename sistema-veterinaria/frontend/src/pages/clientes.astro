@@ -1,0 +1,153 @@
+﻿---
+import DashboardLayout from '../layouts/DashboardLayout.astro';
+---
+<DashboardLayout title="Clientes">
+  <div class="page-card">
+    <div class="page-card-header">
+      <span class="page-card-title">Clientes registrados</span>
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="search-wrap">
+          <svg class="search-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input type="text" id="search-input" class="search-input" placeholder="Buscar clientes..." />
+        </div>
+        <button id="add-cliente-btn" class="btn-primary">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          Nuevo Cliente
+        </button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre</th><th>Teléfono</th><th>Email</th>
+            <th style="text-align:right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="clientes-tbody">
+          <tr><td colspan="4" class="alert-empty">Cargando clientes...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="cliente-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modal-title">Nuevo Cliente</h3>
+        <p>Completa los datos del cliente</p>
+      </div>
+      <div class="modal-body">
+        <form id="cliente-form">
+          <input type="hidden" id="cliente-id" />
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Nombre *</label>
+              <input type="text" id="nombre" required class="form-input" placeholder="Nombre" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Apellido *</label>
+              <input type="text" id="apellido" required class="form-input" placeholder="Apellido" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Teléfono *</label>
+              <input type="tel" id="telefono" required class="form-input" placeholder="Ej: 0991234567" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input type="email" id="email" class="form-input" placeholder="correo@email.com" />
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Dirección</label>
+              <textarea id="direccion" class="form-textarea" placeholder="Dirección completa..."></textarea>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button>
+        <button type="submit" form="cliente-form" class="btn-primary">Guardar Cliente</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:8000';
+    const token = localStorage.getItem('token');
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+    let clientes = [];
+    async function loadClientes(search = '') {
+      try {
+        const url = search ? `${API_URL}/api/clientes?search=${encodeURIComponent(search)}` : `${API_URL}/api/clientes`;
+        const res = await fetch(url, { headers });
+        clientes = await res.json();
+        renderClientes();
+      } catch (e) { console.error(e); }
+    }
+    function renderClientes() {
+      const tbody = document.getElementById('clientes-tbody');
+      if (!clientes.length) { tbody.innerHTML = '<tr><td colspan="4" class="alert-empty">No se encontraron clientes</td></tr>'; return; }
+      tbody.innerHTML = clientes.map(c => `
+        <tr>
+          <td><p class="cell-name">${c.nombre} ${c.apellido}</p><p class="cell-sub">${c.direccion || ''}</p></td>
+          <td>${c.telefono}</td>
+          <td>${c.email || '<span style="color:#d1d5db">—</span>'}</td>
+          <td style="text-align:right">
+            <button class="btn-edit" onclick="editCliente(${c.id})">Editar</button>
+            <button class="btn-danger" onclick="deleteCliente(${c.id})" style="margin-left:6px">Eliminar</button>
+          </td>
+        </tr>`).join('');
+    }
+    const modal = document.getElementById('cliente-modal');
+    const form = document.getElementById('cliente-form');
+    document.getElementById('add-cliente-btn').addEventListener('click', () => {
+      form.reset();
+      document.getElementById('cliente-id').value = '';
+      document.getElementById('modal-title').textContent = 'Nuevo Cliente';
+      modal.classList.add('open');
+    });
+    document.getElementById('cancel-btn').addEventListener('click', () => modal.classList.remove('open'));
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+    let st;
+    document.getElementById('search-input').addEventListener('input', e => {
+      clearTimeout(st);
+      st = setTimeout(() => loadClientes(e.target.value), 300);
+    });
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = {
+        nombre: document.getElementById('nombre').value,
+        apellido: document.getElementById('apellido').value,
+        telefono: document.getElementById('telefono').value,
+        email: document.getElementById('email').value || null,
+        direccion: document.getElementById('direccion').value || null,
+      };
+      const id = document.getElementById('cliente-id').value;
+      try {
+        await fetch(id ? `${API_URL}/api/clientes/${id}` : `${API_URL}/api/clientes`, {
+          method: id ? 'PUT' : 'POST', headers, body: JSON.stringify(data)
+        });
+        modal.classList.remove('open'); loadClientes();
+      } catch { alert('Error al guardar cliente'); }
+    });
+    window.editCliente = id => {
+      const c = clientes.find(x => x.id === id); if (!c) return;
+      document.getElementById('cliente-id').value = id;
+      document.getElementById('nombre').value = c.nombre;
+      document.getElementById('apellido').value = c.apellido;
+      document.getElementById('telefono').value = c.telefono;
+      document.getElementById('email').value = c.email || '';
+      document.getElementById('direccion').value = c.direccion || '';
+      document.getElementById('modal-title').textContent = 'Editar Cliente';
+      modal.classList.add('open');
+    };
+    window.deleteCliente = async id => {
+      if (!confirm('¿Eliminar este cliente?')) return;
+      try { await fetch(`${API_URL}/api/clientes/${id}`, { method: 'DELETE', headers }); loadClientes(); }
+      catch { alert('Error al eliminar cliente'); }
+    };
+    loadClientes();
+  </script>
+</DashboardLayout>

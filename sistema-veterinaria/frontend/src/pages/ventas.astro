@@ -1,0 +1,146 @@
+﻿---
+import DashboardLayout from '../layouts/DashboardLayout.astro';
+---
+<DashboardLayout title="Historial de Ventas">
+
+  <!-- Filtros -->
+  <div class="page-card" style="margin-bottom:20px">
+    <div class="page-card-header">
+      <span class="page-card-title">Filtros</span>
+    </div>
+    <div style="padding:16px 24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <div class="form-group">
+        <label class="form-label">Fecha Inicio</label>
+        <input type="date" id="fecha-inicio" class="form-input" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha Fin</label>
+        <input type="date" id="fecha-fin" class="form-input" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cliente</label>
+        <select id="cliente-filter" class="form-select"><option value="">Todos los clientes</option></select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla -->
+  <div class="page-card">
+    <div class="page-card-header">
+      <span class="page-card-title">Ventas realizadas</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Código</th><th>Fecha</th><th>Cliente</th>
+            <th>Método Pago</th><th>Total</th><th>Estado</th>
+            <th style="text-align:right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="ventas-tbody">
+          <tr><td colspan="7" class="alert-empty">Cargando ventas...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal detalle -->
+  <div id="detalle-modal" class="modal-overlay">
+    <div class="modal-box modal-box-lg">
+      <div class="modal-header">
+        <h3>Detalle de Venta</h3>
+        <p>Información completa de la transacción</p>
+      </div>
+      <div class="modal-body" id="detalle-content"></div>
+      <div class="modal-footer">
+        <button id="close-detalle-btn" class="btn-primary" style="width:100%;justify-content:center">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:8000';
+    const token = localStorage.getItem('token');
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+    let ventas = [], clientes = [];
+    async function loadClientes() {
+      const res = await fetch(`${API_URL}/api/clientes`, { headers });
+      clientes = await res.json();
+      const sel = document.getElementById('cliente-filter');
+      sel.innerHTML = '<option value="">Todos los clientes</option>' +
+        clientes.map(c => `<option value="${c.id}">${c.nombre} ${c.apellido}</option>`).join('');
+    }
+    async function loadVentas() {
+      try {
+        const res = await fetch(`${API_URL}/api/ventas`, { headers });
+        ventas = await res.json();
+        renderVentas();
+      } catch (e) { console.error(e); }
+    }
+    function getEstadoBadge(estado) {
+      const map = { completada: 'badge-green', cancelada: 'badge-red', pendiente: 'badge-amber' };
+      return `<span class="badge ${map[estado]||'badge-gray'}">${estado}</span>`;
+    }
+    function renderVentas() {
+      const tbody = document.getElementById('ventas-tbody');
+      if (!ventas.length) { tbody.innerHTML = '<tr><td colspan="7" class="alert-empty">No se encontraron ventas</td></tr>'; return; }
+      tbody.innerHTML = ventas.map(v => {
+        const cli = clientes.find(c => c.id === v.cliente_id);
+        const nombre = cli ? `${cli.nombre} ${cli.apellido}` : '';
+        const fecha = new Date(v.fecha).toLocaleString('es-ES');
+        return `<tr>
+          <td><p class="cell-name">${v.codigo_venta}</p></td>
+          <td>${fecha}</td>
+          <td>${nombre}</td>
+          <td><span class="badge badge-blue">${v.metodo_pago}</span></td>
+          <td><strong style="color:#16a34a">$${v.total.toFixed(2)}</strong></td>
+          <td>${getEstadoBadge(v.estado)}</td>
+          <td style="text-align:right"><button class="btn-edit" onclick="verDetalle(${v.id})">Ver detalle</button></td>
+        </tr>`;
+      }).join('');
+    }
+    window.verDetalle = id => {
+      const v = ventas.find(x => x.id === id); if (!v) return;
+      const cli = clientes.find(c => c.id === v.cliente_id);
+      const nombre = cli ? `${cli.nombre} ${cli.apellido}` : '';
+      const fecha = new Date(v.fecha).toLocaleString('es-ES');
+      document.getElementById('detalle-content').innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+          <div><p style="font-size:12px;color:#9ca3af">Código</p><p style="font-weight:700">${v.codigo_venta}</p></div>
+          <div><p style="font-size:12px;color:#9ca3af">Fecha</p><p style="font-weight:700">${fecha}</p></div>
+          <div><p style="font-size:12px;color:#9ca3af">Cliente</p><p style="font-weight:700">${nombre}</p></div>
+          <div><p style="font-size:12px;color:#9ca3af">Método de Pago</p><p style="font-weight:700">${v.metodo_pago}</p></div>
+        </div>
+        <p style="font-weight:700;margin-bottom:12px;font-size:14px">Productos</p>
+        ${v.detalles.map(d => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f9fafb;border-radius:10px;margin-bottom:8px">
+            <div>
+              <p style="font-weight:600;font-size:14px">Producto #${d.producto_id}</p>
+              <p style="font-size:12px;color:#9ca3af">${d.cantidad} × $${d.precio_unitario.toFixed(2)}</p>
+            </div>
+            <strong>$${d.subtotal.toFixed(2)}</strong>
+          </div>`).join('')}
+        <div style="border-top:1px solid #f3f4f6;padding-top:14px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:14px">
+            <span>Subtotal</span><span>$${v.subtotal.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:14px;color:#dc2626">
+            <span>Descuento</span><span>-$${v.descuento.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;color:#16a34a">
+            <span>Total</span><span>$${v.total.toFixed(2)}</span>
+          </div>
+        </div>
+        ${v.notas ? `<div style="margin-top:14px;padding:12px;background:#f9fafb;border-radius:10px"><p style="font-size:12px;color:#9ca3af">Notas</p><p style="margin-top:4px">${v.notas}</p></div>` : ''}
+      `;
+      document.getElementById('detalle-modal').classList.add('open');
+    };
+    document.getElementById('close-detalle-btn').addEventListener('click', () =>
+      document.getElementById('detalle-modal').classList.remove('open'));
+    document.getElementById('detalle-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('detalle-modal')) document.getElementById('detalle-modal').classList.remove('open');
+    });
+    loadClientes().then(() => loadVentas());
+  </script>
+</DashboardLayout>

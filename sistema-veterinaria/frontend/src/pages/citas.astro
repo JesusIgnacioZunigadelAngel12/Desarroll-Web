@@ -1,0 +1,569 @@
+---
+import DashboardLayout from '../layouts/DashboardLayout.astro';
+---
+<DashboardLayout title="Citas">
+<style is:global>
+  /* ── Calendar grid ── */
+  .cal-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .cal-month { font-size:18px; font-weight:700; color:#1e1b4b; }
+  .cal-btn { width:34px; height:34px; border-radius:8px; border:1.5px solid #e5e7eb; background:#fff;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:background .12s; color:#374151; font-size:16px; }
+  .cal-btn:hover { background:#f5f3ff; border-color:#6366f1; }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .cal-day-name { text-align:center; font-size:11px; font-weight:700; color:#9ca3af;
+    padding:6px 0; text-transform:uppercase; }
+  .cal-cell { min-height:80px; border-radius:10px; border:1.5px solid #f3f4f6;
+    padding:6px; cursor:pointer; transition:border-color .12s, background .12s; position:relative; }
+  .cal-cell:hover { border-color:#a5b4fc; background:#f5f3ff; }
+  .cal-cell.today { border-color:#6366f1; background:#eef2ff; }
+  .cal-cell.other-month { opacity:.35; }
+  .cal-cell.selected { border-color:#4f46e5; background:#e0e7ff; }
+  .cal-date { font-size:12px; font-weight:700; color:#374151; margin-bottom:4px; }
+  .cal-cell.today .cal-date { color:#4f46e5; }
+  .cal-evt { font-size:10px; font-weight:600; padding:2px 5px; border-radius:4px;
+    margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+  .cal-evt.pendiente   { background:#fef3c7; color:#92400e; }
+  .cal-evt.confirmada  { background:#dbeafe; color:#1e40af; }
+  .cal-evt.completada  { background:#d1fae5; color:#065f46; }
+  .cal-evt.cancelada   { background:#fee2e2; color:#991b1b; }
+
+  /* ── List ── */
+  .cita-row { display:flex; align-items:center; gap:14px; padding:12px 20px;
+    border-bottom:1px solid #f3f4f6; transition:background .1s; }
+  .cita-row:hover { background:#f9fafb; }
+  .cita-row:last-child { border-bottom:none; }
+  .cita-hora { font-size:13px; font-weight:700; color:#1e1b4b; min-width:56px; }
+  .cita-info { flex:1; }
+  .cita-mascota { font-weight:700; color:#111827; font-size:14px; }
+  .cita-cliente { font-size:12px; color:#9ca3af; }
+  .cita-motivo { font-size:12px; color:#6b7280; margin-top:2px; }
+  .dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .dot.pendiente   { background:#f59e0b; }
+  .dot.confirmada  { background:#3b82f6; }
+  .dot.completada  { background:#10b981; }
+  .dot.cancelada   { background:#ef4444; }
+  .view-toggle { display:flex; gap:0; border:1.5px solid #e5e7eb; border-radius:10px; overflow:hidden; }
+  .view-btn { padding:8px 16px; border:none; background:#fff; cursor:pointer; font-size:13px;
+    font-weight:600; color:#6b7280; transition:background .12s, color .12s; }
+  .view-btn.active { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; }
+  .btn-cancel-cita { padding:5px 12px; border-radius:7px; border:1.5px solid #f59e0b;
+    background:#fffbeb; color:#92400e; font-size:12px; font-weight:600; cursor:pointer;
+    transition:background .12s; }
+  .btn-cancel-cita:hover { background:#fef3c7; }
+
+  /* ── Disponibilidad ── */
+  .disp-badge { display:inline-flex; align-items:center; gap:6px; font-size:12px;
+    font-weight:600; padding:5px 12px; border-radius:20px; margin-top:6px; }
+  .disp-disponible { background:#d1fae5; color:#065f46; }
+  .disp-ocupado    { background:#fee2e2; color:#991b1b; }
+  .disp-chequeando { background:#e0e7ff; color:#3730a3; }
+</style>
+
+<!-- Toolbar -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+  <div class="view-toggle">
+    <button class="view-btn active" id="btn-calendario">📅 Calendario</button>
+    <button class="view-btn"        id="btn-lista">📋 Lista</button>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <select id="filtro-estado" class="filter-select">
+      <option value="">Todos los estados</option>
+      <option value="pendiente">Pendiente</option>
+      <option value="confirmada">Confirmada</option>
+      <option value="completada">Completada</option>
+      <option value="cancelada">Cancelada</option>
+    </select>
+    <button id="add-cita-btn" class="btn-primary">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Nueva Cita
+    </button>
+  </div>
+</div>
+
+<!-- Vista calendario -->
+<div id="view-calendario" class="page-card" style="padding:24px">
+  <div class="cal-nav">
+    <button class="cal-btn" id="prev-month">&#8249;</button>
+    <span class="cal-month" id="cal-title"></span>
+    <button class="cal-btn" id="next-month">&#8250;</button>
+  </div>
+  <div class="cal-grid" id="cal-header"></div>
+  <div class="cal-grid" id="cal-body" style="margin-top:4px"></div>
+</div>
+
+<!-- Vista lista -->
+<div id="view-lista" class="page-card" style="display:none">
+  <div class="page-card-header">
+    <span class="page-card-title">Próximas citas</span>
+    <div class="search-wrap">
+      <svg class="search-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="search-citas" class="search-input" placeholder="Buscar citas..." />
+    </div>
+  </div>
+  <div id="lista-citas"></div>
+</div>
+
+<!-- Modal cita -->
+<div id="cita-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-title">Nueva Cita</h3>
+      <p>Completa los datos de la cita</p>
+    </div>
+    <div class="modal-body">
+      <form id="cita-form">
+        <input type="hidden" id="cita-id" />
+        <div class="form-grid">
+
+          <!-- Propietario autocomplete -->
+          <div class="form-group full" style="position:relative">
+            <label class="form-label">Propietario *</label>
+            <input type="hidden" id="c-cliente_id" />
+            <input type="text" id="c-cliente-search" class="form-input"
+              placeholder="Buscar propietario por nombre o teléfono..." autocomplete="off" />
+            <div id="c-cliente-drop" style="display:none;position:absolute;top:100%;left:0;right:0;
+              background:#fff;border:1.5px solid #6366f1;border-top:none;border-radius:0 0 10px 10px;
+              max-height:200px;overflow-y:auto;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.12)"></div>
+          </div>
+
+          <!-- Mascota select -->
+          <div class="form-group full">
+            <label class="form-label">Mascota *</label>
+            <select id="c-mascota_id" required class="form-select">
+              <option value="">Selecciona primero el propietario</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Fecha y hora *</label>
+            <input type="datetime-local" id="c-fecha_hora" required class="form-input" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Estado</label>
+            <select id="c-estado" class="form-select">
+              <option value="pendiente">Pendiente</option>
+              <option value="confirmada">Confirmada</option>
+              <option value="completada">Completada</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+          </div>
+
+          <div class="form-group full">
+            <label class="form-label">Motivo de la cita *</label>
+            <input type="text" id="c-motivo" required class="form-input"
+              placeholder="Ej: Vacunación, Control, Cirugía..." />
+          </div>
+
+          <div class="form-group full">
+            <label class="form-label">Veterinario responsable</label>
+            <select id="c-veterinario" class="form-select">
+              <option value="">Sin asignar</option>
+            </select>
+            <div id="disponibilidad-status"></div>
+          </div>
+
+          <div class="form-group full">
+            <label class="form-label">Notas adicionales</label>
+            <textarea id="c-notas" class="form-textarea"
+              placeholder="Observaciones, preparación previa..."></textarea>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button>
+      <button type="submit" form="cita-form" class="btn-primary">Guardar Cita</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL   = 'http://localhost:8000';
+const token     = localStorage.getItem('token');
+const headers   = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+let citas = [], clientes = [], veterinarios = [], mascotasMap = {}, currentView = 'calendario';
+let currentYear = new Date().getFullYear(), currentMonth = new Date().getMonth();
+
+const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// ── Cargar datos ──────────────────────────────────────
+async function loadAll() {
+  try {
+    const [rCitas, rClientes, rVets] = await Promise.all([
+      fetch(`${API_URL}/api/citas?limit=500`, { headers }),
+      fetch(`${API_URL}/api/clientes?limit=500`, { headers }),
+      fetch(`${API_URL}/api/veterinarios?solo_activos=true`, { headers })
+    ]);
+
+    if (rClientes.status === 401 || rCitas.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+      return;
+    }
+
+    const dataCitas    = await rCitas.json();
+    const dataClientes = await rClientes.json();
+    const dataVets     = await rVets.json();
+
+    citas        = Array.isArray(dataCitas)    ? dataCitas    : [];
+    clientes     = Array.isArray(dataClientes) ? dataClientes : [];
+    veterinarios = Array.isArray(dataVets)     ? dataVets     : [];
+
+    // Poblar select de veterinarios en el modal
+    const vetSel = document.getElementById('c-veterinario');
+    vetSel.innerHTML = '<option value="">Sin asignar</option>' +
+      veterinarios.map(v => `<option value="${v.nombre} ${v.apellido}">${v.nombre} ${v.apellido}${v.especialidad ? ' \u2014 ' + v.especialidad : ''}</option>`).join('');
+    clientes.forEach(c => { mascotasMap[c.id] = c; });
+    renderView();
+  } catch(e) {
+    console.error('Error cargando datos:', e);
+  }
+}
+
+// ── Vistas ────────────────────────────────────────────
+function renderView() {
+  if (currentView === 'calendario') renderCalendario();
+  else renderLista();
+}
+
+// ── CALENDARIO ───────────────────────────────────────
+function renderCalendario() {
+  document.getElementById('cal-title').textContent = `${MESES[currentMonth]} ${currentYear}`;
+  const hdr = document.getElementById('cal-header');
+  hdr.innerHTML = DIAS.map(d => `<div class="cal-day-name">${d}</div>`).join('');
+
+  const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const daysInPrev  = new Date(currentYear, currentMonth, 0).getDate();
+  const today = new Date();
+
+  const cells = [];
+  // días previos
+  for (let i = firstDay - 1; i >= 0; i--)
+    cells.push({ day: daysInPrev - i, month: currentMonth - 1, otherMonth: true });
+  // días actuales
+  for (let d = 1; d <= daysInMonth; d++)
+    cells.push({ day: d, month: currentMonth, otherMonth: false });
+  // días siguientes
+  while (cells.length % 7 !== 0)
+    cells.push({ day: cells.length - daysInMonth - firstDay + 1, month: currentMonth + 1, otherMonth: true });
+
+  const estadoFiltro = document.getElementById('filtro-estado').value;
+
+  document.getElementById('cal-body').innerHTML = cells.map(cell => {
+    const isToday = !cell.otherMonth &&
+      today.getDate() === cell.day && today.getMonth() === currentMonth && today.getFullYear() === currentYear;
+    const cellDate = new Date(currentYear, cell.month, cell.day);
+    const dayCitas = citas.filter(c => {
+      const fd = new Date(c.fecha_hora);
+      return fd.getFullYear() === cellDate.getFullYear() &&
+             fd.getMonth()     === cellDate.getMonth() &&
+             fd.getDate()      === cellDate.getDate() &&
+             (!estadoFiltro || c.estado === estadoFiltro);
+    });
+    const evts = dayCitas.slice(0, 3).map(c =>
+      `<div class="cal-evt ${c.estado}" onclick="openEdit(${c.id});event.stopPropagation()"
+        title="${c.motivo}">${formatHora(c.fecha_hora)} ${c.motivo}</div>`
+    ).join('') + (dayCitas.length > 3 ? `<div style="font-size:10px;color:#9ca3af">+${dayCitas.length-3} más</div>` : '');
+
+    return `<div class="cal-cell${cell.otherMonth?' other-month':''}${isToday?' today':''}"
+      onclick="openNewForDate('${cellDate.toISOString().split('T')[0]}')">
+      <div class="cal-date">${cell.day}</div>${evts}
+    </div>`;
+  }).join('');
+}
+
+// ── LISTA ────────────────────────────────────────────
+function renderLista(search = '') {
+  const estadoFiltro = document.getElementById('filtro-estado').value;
+  let filtered = citas
+    .filter(c => !estadoFiltro || c.estado === estadoFiltro)
+    .filter(c => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return c.motivo.toLowerCase().includes(q) || c.veterinario?.toLowerCase().includes(q);
+    })
+    .sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora));
+
+  const container = document.getElementById('lista-citas');
+  if (!filtered.length) {
+    container.innerHTML = '<p class="alert-empty">No se encontraron citas</p>'; return;
+  }
+
+  let lastDate = '';
+  container.innerHTML = filtered.map(c => {
+    const dt = new Date(c.fecha_hora);
+    const dateStr = dt.toLocaleDateString('es-ES', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    const header = dateStr !== lastDate
+      ? `<div style="padding:10px 20px 4px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;background:#f9fafb">${dateStr}</div>`
+      : '';
+    lastDate = dateStr;
+    return `${header}
+    <div class="cita-row">
+      <span class="dot ${c.estado}"></span>
+      <span class="cita-hora">${formatHora(c.fecha_hora)}</span>
+      <div class="cita-info">
+        <p class="cita-mascota">${getMascotaNombre(c.mascota_id)}</p>
+        <p class="cita-cliente">${getClienteNombre(c.cliente_id)}</p>
+        <p class="cita-motivo">${c.motivo}${c.veterinario ? ' · ' + c.veterinario : ''}</p>
+      </div>
+      <span class="badge ${estadoBadge(c.estado)}">${c.estado}</span>
+      <div style="display:flex;gap:6px">
+        <button class="btn-edit" onclick="openEdit(${c.id})">Editar</button>
+        ${c.estado !== 'cancelada' && c.estado !== 'completada'
+          ? `<button class="btn-cancel-cita" onclick="cancelCita(${c.id})">Cancelar</button>`
+          : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Helpers ───────────────────────────────────────────
+function formatHora(iso) {
+  return new Date(iso).toLocaleTimeString('es-ES', { hour:'2-digit', minute:'2-digit' });
+}
+const estadoBadge = e => ({ pendiente:'badge-amber', confirmada:'badge-blue', completada:'badge-green', cancelada:'badge-red' }[e] || 'badge-gray');
+
+let mascotasCache = {};
+async function getMascotasCliente(clienteId) {
+  if (mascotasCache[clienteId]) return mascotasCache[clienteId];
+  const res = await fetch(`${API_URL}/api/mascotas/cliente/${clienteId}`, { headers });
+  mascotasCache[clienteId] = await res.json();
+  return mascotasCache[clienteId];
+}
+function getMascotaNombre(id) {
+  for (const ms of Object.values(mascotasCache))
+    for (const m of ms) if (m.id === id) return m.nombre;
+  const c = citas.find(x => x.mascota_id === id);
+  return c ? `Mascota #${id}` : `#${id}`;
+}
+function getClienteNombre(id) {
+  const c = clientes.find(x => x.id === id);
+  return c ? `${c.nombre} ${c.apellido}` : '—';
+}
+
+// ── Nav calendario ────────────────────────────────────
+document.getElementById('prev-month').addEventListener('click', () => {
+  currentMonth--; if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  renderCalendario();
+});
+document.getElementById('next-month').addEventListener('click', () => {
+  currentMonth++; if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  renderCalendario();
+});
+
+// ── Toggle vistas ──────────────────────────────────────
+document.getElementById('btn-calendario').addEventListener('click', () => {
+  currentView = 'calendario';
+  document.getElementById('view-calendario').style.display = '';
+  document.getElementById('view-lista').style.display = 'none';
+  document.getElementById('btn-calendario').classList.add('active');
+  document.getElementById('btn-lista').classList.remove('active');
+  renderCalendario();
+});
+document.getElementById('btn-lista').addEventListener('click', () => {
+  currentView = 'lista';
+  document.getElementById('view-calendario').style.display = 'none';
+  document.getElementById('view-lista').style.display = '';
+  document.getElementById('btn-lista').classList.add('active');
+  document.getElementById('btn-calendario').classList.remove('active');
+  renderLista();
+});
+document.getElementById('filtro-estado').addEventListener('change', renderView);
+document.getElementById('search-citas').addEventListener('input', e => renderLista(e.target.value));
+
+// ── Autocomplete propietario en modal ─────────────────
+const cSearch  = document.getElementById('c-cliente-search');
+const cHidden  = document.getElementById('c-cliente_id');
+const cDrop    = document.getElementById('c-cliente-drop');
+const mSelect  = document.getElementById('c-mascota_id');
+
+function renderClienteDrop(items) {
+  cDrop.innerHTML = items.length
+    ? items.slice(0, 50).map(c => {
+        const fullName = `${c.nombre} ${c.apellido}`.replace(/'/g, "\\'");
+        return `
+        <div data-id="${c.id}" style="padding:10px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid #f3f4f6"
+          onmouseenter="this.style.background='#f5f3ff'" onmouseleave="this.style.background=''"
+          onmousedown="selectCitaCliente(${c.id},'${fullName}')">
+          <strong>${c.nombre} ${c.apellido}</strong>
+          <span style="color:#9ca3af;margin-left:8px">${c.telefono}</span>
+        </div>`;
+      }).join('')
+    : '<p style="padding:10px 14px;font-size:13px;color:#9ca3af">Sin resultados</p>';
+  cDrop.style.display = 'block';
+}
+
+window.selectCitaCliente = async (id, nombre) => {
+  cHidden.value = id; cSearch.value = nombre;
+  cSearch.style.borderColor = '#10b981'; cDrop.style.display = 'none';
+  const mascotas = await getMascotasCliente(id);
+  mSelect.innerHTML = mascotas.length
+    ? mascotas.map(m => `<option value="${m.id}">${m.nombre} (${m.especie})</option>`).join('')
+    : '<option value="">Este cliente no tiene mascotas</option>';
+};
+
+cSearch.addEventListener('input', () => {
+  const q = cSearch.value.toLowerCase().trim();
+  cHidden.value = ''; cSearch.style.borderColor = '';
+  mSelect.innerHTML = '<option value="">Selecciona primero el propietario</option>';
+  const items = q
+    ? clientes.filter(c => `${c.nombre} ${c.apellido}`.toLowerCase().includes(q) || c.telefono.includes(q))
+    : clientes;
+  renderClienteDrop(items);
+});
+cSearch.addEventListener('focus', () => renderClienteDrop(
+  cSearch.value.trim()
+    ? clientes.filter(c => `${c.nombre} ${c.apellido}`.toLowerCase().includes(cSearch.value.toLowerCase()) || c.telefono.includes(cSearch.value))
+    : clientes
+));
+document.addEventListener('click', e => {
+  if (!cSearch.contains(e.target) && !cDrop.contains(e.target)) cDrop.style.display = 'none';
+});
+
+// ── Modal ─────────────────────────────────────────────
+const modal = document.getElementById('cita-modal');
+const form  = document.getElementById('cita-form');
+
+function resetModal() {
+  form.reset();
+  document.getElementById('cita-id').value = '';
+  cHidden.value = ''; cSearch.value = ''; cSearch.style.borderColor = '';
+  cDrop.style.display = 'none';
+  mSelect.innerHTML = '<option value="">Selecciona primero el propietario</option>';
+  document.getElementById('disponibilidad-status').innerHTML = '';
+}
+
+document.getElementById('add-cita-btn').addEventListener('click', () => {
+  resetModal();
+  document.getElementById('modal-title').textContent = 'Nueva Cita';
+  modal.classList.add('open');
+});
+document.getElementById('cancel-btn').addEventListener('click', () => modal.classList.remove('open'));
+modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+
+// ── Disponibilidad ──────────────────────────────────
+let dispTimer = null;
+async function checkDisponibilidad() {
+  const vet      = document.getElementById('c-veterinario').value;
+  const fechaRaw = document.getElementById('c-fecha_hora').value;
+  const badge    = document.getElementById('disponibilidad-status');
+  if (!vet || !fechaRaw) { badge.innerHTML = ''; return; }
+
+  badge.innerHTML = '<span class="disp-badge disp-chequeando">⏳ Verificando disponibilidad...</span>';
+  clearTimeout(dispTimer);
+  dispTimer = setTimeout(async () => {
+    const excId = document.getElementById('cita-id').value;
+    const url   = `${API_URL}/api/citas/disponibilidad?veterinario=${encodeURIComponent(vet)}&fecha_hora=${encodeURIComponent(fechaRaw)}`
+               + (excId ? `&exclude_id=${excId}` : '');
+    try {
+      const res  = await fetch(url, { headers });
+      const data = await res.json();
+      if (data.disponible) {
+        badge.innerHTML = '<span class="disp-badge disp-disponible">✔ Horario disponible</span>';
+      } else {
+        badge.innerHTML = `<span class="disp-badge disp-ocupado">✖ No disponible — ${data.mensaje}</span>`;
+      }
+    } catch {
+      badge.innerHTML = '';
+    }
+  }, 400);
+}
+
+document.getElementById('c-veterinario').addEventListener('change', checkDisponibilidad);
+document.getElementById('c-fecha_hora').addEventListener('change',  checkDisponibilidad);
+
+// Abrir modal con fecha preseleccionada al hacer clic en un día
+window.openNewForDate = (dateStr) => {
+  resetModal();
+  document.getElementById('modal-title').textContent = 'Nueva Cita';
+  const now = new Date(); const h = String(now.getHours()).padStart(2,'0'), m = String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('c-fecha_hora').value = `${dateStr}T${h}:${m}`;
+  modal.classList.add('open');
+};
+
+// Abrir modal para editar
+window.openEdit = async (id) => {
+  const c = citas.find(x => x.id === id); if (!c) return;
+  resetModal();
+  document.getElementById('cita-id').value = id;
+  document.getElementById('modal-title').textContent = 'Editar Cita';
+
+  // Cargar propietario
+  const cli = clientes.find(x => x.id === c.cliente_id);
+  if (cli) await selectCitaCliente(cli.id, `${cli.nombre} ${cli.apellido}`);
+  document.getElementById('c-mascota_id').value = c.mascota_id;
+
+  const dt = new Date(c.fecha_hora);
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('c-fecha_hora').value =
+    `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+  document.getElementById('c-estado').value      = c.estado;
+  document.getElementById('c-motivo').value      = c.motivo;
+  document.getElementById('c-veterinario').value = c.veterinario || '';
+  document.getElementById('c-notas').value       = c.notas || '';
+  await checkDisponibilidad();
+  modal.classList.add('open');
+};
+
+// Guardar
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!cHidden.value) {
+    cSearch.style.borderColor = '#dc2626'; cSearch.focus(); return;
+  }
+  const data = {
+    cliente_id:  parseInt(cHidden.value),
+    mascota_id:  parseInt(mSelect.value),
+    fecha_hora:  document.getElementById('c-fecha_hora').value,
+    estado:      document.getElementById('c-estado').value,
+    motivo:      document.getElementById('c-motivo').value,
+    veterinario: document.getElementById('c-veterinario').value || null,
+    notas:       document.getElementById('c-notas').value || null,
+  };
+  const id = document.getElementById('cita-id').value;
+  try {
+    const res = await fetch(id ? `${API_URL}/api/citas/${id}` : `${API_URL}/api/citas`, {
+      method: id ? 'PUT' : 'POST', headers, body: JSON.stringify(data)
+    });
+    if (res.status === 409) {
+      const err = await res.json();
+      const badge = document.getElementById('disponibilidad-status');
+      badge.innerHTML = `<span class="disp-badge disp-ocupado">✖ ${err.detail}</span>`;
+      document.getElementById('c-veterinario').scrollIntoView({ behavior:'smooth', block:'center' });
+      return;
+    }
+    if (!res.ok) { alert('Error al guardar la cita'); return; }
+    modal.classList.remove('open');
+    await loadAll();
+  } catch { alert('Error al guardar la cita'); }
+});
+
+// Cancelar
+window.cancelCita = async id => {
+  if (!confirm('¿Cancelar esta cita?')) return;
+  await fetch(`${API_URL}/api/citas/${id}`, {
+    method: 'PUT', headers,
+    body: JSON.stringify({ estado: 'cancelada' })
+  });
+  await loadAll();
+};
+
+// Eliminar
+window.deleteCita = async id => {
+  if (!confirm('¿Eliminar esta cita?')) return;
+  await fetch(`${API_URL}/api/citas/${id}`, { method:'DELETE', headers });
+  await loadAll();
+};
+
+loadAll();
+</script>
+</DashboardLayout>
