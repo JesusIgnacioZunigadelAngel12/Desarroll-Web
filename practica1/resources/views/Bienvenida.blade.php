@@ -1,1 +1,0 @@
-<h1>Bienvenido a mi primera aplicación de Laravel</h1>
